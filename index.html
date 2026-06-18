@@ -617,11 +617,11 @@
                 </div>
                 <div class="calendar-buttons">
                     <button class="add-button" onclick="openModal()">+ 새 프로젝트</button>
-                    <button class="save-button" onclick="manualSync()">💾 수동 저장</button>
+                    <button class="save-button" onclick="saveToGitHub()">💾 저장</button>
                     <button class="settings-button" onclick="openSettings()">⚙️ 설정</button>
                     <button class="add-button" onclick="toggleTagManager()" style="background: #F9A8BB;">✏️ 작업 내용 추가</button>
                 </div>
-                <div class="sync-status" id="syncStatus">⏳ 로딩 중...</div>
+                <div class="sync-status" id="syncStatus">✅ 준비됨</div>
                 
                 <!-- 칩 관리 섹션 -->
                 <div class="tag-manager" id="tagManager">
@@ -773,55 +773,36 @@
             }
 
             try {
-                updateSyncStatus('⏳ GitHub에서 로드 중...', '#F4C9D6');
+                updateSyncStatus('⏳ 로드 중...', '#F4C9D6');
 
                 const response = await fetch(
                     `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${FILE_NAME}`,
                     { 
                         headers: { 
                             'Authorization': `token ${token}`,
-                            'Accept': 'application/vnd.github.v3.raw'
+                            'Accept': 'application/vnd.github.v3+json'
                         } 
                     }
                 );
                 
                 if (response.ok) {
-                    const text = await response.text();
-                    if (text) {
-                        const data = JSON.parse(text);
-                        projects = data.projects || data;
-                        tagsLibrary = data.tagsLibrary || [];
-                        
-                        // 로컬 백업 저장
-                        localStorage.setItem('hamgTodoBackup', JSON.stringify(data));
-                        
-                        updateSyncStatus('✅ GitHub에서 로드됨', '#10b981');
-                    } else {
-                        throw new Error('파일이 비어있습니다');
-                    }
+                    const fileData = await response.json();
+                    const content = atob(fileData.content);
+                    const data = JSON.parse(content);
+                    projects = data.projects || data;
+                    tagsLibrary = data.tagsLibrary || [];
+                    
+                    updateSyncStatus('✅ GitHub에서 로드됨', '#10b981');
                 } else if (response.status === 404) {
-                    updateSyncStatus('📝 처음 사용입니다. 저장해주세요!', '#F9A8BB');
+                    updateSyncStatus('📝 처음 사용입니다', '#F9A8BB');
                     createSampleData();
                 } else {
-                    throw new Error(`GitHub 오류: ${response.status}`);
+                    throw new Error(`오류: ${response.status}`);
                 }
             } catch (error) {
-                console.error('GitHub 로드 오류:', error);
-                updateSyncStatus('⚠️ GitHub 로드 실패. 로컬에서 복구 중...', '#F9A8BB');
-                
-                // 로컬 백업에서 복구
-                const backup = localStorage.getItem('hamgTodoBackup');
-                if (backup) {
-                    try {
-                        const data = JSON.parse(backup);
-                        projects = data.projects || data;
-                        tagsLibrary = data.tagsLibrary || [];
-                    } catch (e) {
-                        createSampleData();
-                    }
-                } else {
-                    createSampleData();
-                }
+                console.error('로드 오류:', error);
+                updateSyncStatus('❌ 로드 실패', '#E24B4A');
+                createSampleData();
             }
             
             renderUI();
@@ -833,33 +814,29 @@
             renderGlobalTags();
         }
 
-        // 자동 저장
+        // 자동 저장 설정
         function setupAutoSave() {
             if (autoSaveTimer) clearTimeout(autoSaveTimer);
-            
             autoSaveTimer = setTimeout(() => {
-                manualSync();
-            }, 2000);
+                saveToGitHub();
+            }, 1000);
         }
 
-        // 수동 저장
-        async function manualSync() {
+        // GitHub에 저장
+        async function saveToGitHub() {
             const token = localStorage.getItem('githubToken');
             
             if (!token) {
-                updateSyncStatus('⚠️ GitHub 토큰이 없습니다', '#F9A8BB');
-                // 로컬 백업만 저장
-                localStorage.setItem('hamgTodoBackup', JSON.stringify({
-                    projects: projects,
-                    tagsLibrary: tagsLibrary
-                }));
+                updateSyncStatus('⚠️ 토큰이 없습니다', '#F9A8BB');
                 return;
             }
 
             try {
-                updateSyncStatus('⏳ GitHub에 저장 중...', '#F4C9D6');
+                updateSyncStatus('⏳ 저장 중...', '#F4C9D6');
 
                 let sha = null;
+                
+                // 1. 파일 정보 조회
                 try {
                     const checkResponse = await fetch(
                         `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${FILE_NAME}`,
@@ -874,11 +851,15 @@
                     if (checkResponse.ok) {
                         const fileData = await checkResponse.json();
                         sha = fileData.sha;
+                        console.log('✅ SHA 획득:', sha);
+                    } else if (checkResponse.status === 404) {
+                        console.log('📝 파일이 없습니다. 새로 생성합니다.');
                     }
                 } catch (e) {
-                    console.log('파일 확인 실패:', e);
+                    console.log('파일 조회:', e);
                 }
 
+                // 2. 데이터 준비
                 const saveData = {
                     projects: projects,
                     tagsLibrary: tagsLibrary
@@ -887,6 +868,7 @@
                 const projectsJson = JSON.stringify(saveData, null, 2);
                 const base64 = btoa(unescape(encodeURIComponent(projectsJson)));
                 
+                // 3. PUT 요청
                 const requestBody = {
                     message: `Update projects - ${new Date().toLocaleString('ko-KR')}`,
                     content: base64
@@ -902,24 +884,25 @@
                         method: 'PUT',
                         headers: {
                             'Authorization': `token ${token}`,
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/vnd.github.v3+json'
                         },
                         body: JSON.stringify(requestBody)
                     }
                 );
 
+                console.log('PUT 응답:', response.status);
+
                 if (response.ok) {
-                    // 로컬 백업도 저장
-                    localStorage.setItem('hamgTodoBackup', JSON.stringify(saveData));
                     updateSyncStatus('✅ GitHub에 저장됨!', '#10b981');
                 } else {
                     const error = await response.json();
-                    console.error('GitHub 응답 오류:', error);
-                    updateSyncStatus(`⚠️ 저장 실패: ${error.message}`, '#F9A8BB');
+                    console.error('저장 실패:', error);
+                    updateSyncStatus(`❌ 저장 실패`, '#E24B4A');
                 }
             } catch (error) {
                 console.error('저장 오류:', error);
-                updateSyncStatus(`❌ 저장 실패: ${error.message}`, '#E24B4A');
+                updateSyncStatus(`❌ 오류: ${error.message}`, '#E24B4A');
             }
         }
 
