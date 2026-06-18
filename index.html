@@ -477,8 +477,8 @@
 
         // Firebase에서 데이터 로드
         function loadProjects() {
-            const userRef = database.ref('users/' + userId + '/projects');
-            userRef.on('value', (snapshot) => {
+            const ref = database.ref('projects');
+            ref.on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     projects = Object.values(data);
@@ -506,16 +506,16 @@
             ];
             
             sampleProjects.forEach(project => {
-                const userRef = database.ref('users/' + userId + '/projects/' + project.id);
-                userRef.set(project);
+                const ref = database.ref('projects/' + project.id);
+                ref.set(project);
             });
         }
 
         // Firebase에 데이터 저장
         function saveToFirebase() {
             projects.forEach(project => {
-                const userRef = database.ref('users/' + userId + '/projects/' + project.id);
-                userRef.set(project);
+                const ref = database.ref('projects/' + project.id);
+                ref.set(project);
             });
         }
 
@@ -779,8 +779,14 @@
 
         function deleteProject() {
             if (confirm('정말 삭제하시겠습니까?')) {
+                const deletingProject = projects.find(p => p.id === editingId);
                 projects = projects.filter(p => p.id !== editingId);
-                saveToFirebase();
+                
+                // Firebase에서도 삭제
+                if (deletingProject) {
+                    database.ref('projects/' + deletingProject.id).remove();
+                }
+                
                 closeModal();
             }
         }
