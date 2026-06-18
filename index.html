@@ -494,16 +494,27 @@
                 );
                 
                 if (response.ok) {
-                    projects = await response.json();
+                    const text = await response.text();
+                    if (text) {
+                        projects = JSON.parse(text);
+                    } else {
+                        createSampleData();
+                    }
+                    renderCalendar();
+                    renderKanban();
                     updateSyncStatus('✅ 동기화 완료', '#10b981');
                 } else {
                     // 파일이 없으면 샘플 데이터 생성
                     createSampleData();
+                    renderCalendar();
+                    renderKanban();
                     updateSyncStatus('📝 새로운 저장소 생성됨', '#F9A8BB');
                 }
             } catch (error) {
                 console.error('로드 오류:', error);
                 createSampleData();
+                renderCalendar();
+                renderKanban();
                 updateSyncStatus('⚠️ 로컬에서 로드됨', '#F9A8BB');
             }
         }
@@ -764,6 +775,7 @@
                 const project = projects.find(p => p.id === draggedId);
                 if (project) {
                     project.status = status;
+                    renderKanban();
                 }
             }
         }
@@ -777,6 +789,7 @@
                 const project = projects.find(p => p.id === draggedId);
                 if (project) {
                     project.status = '작업완료';
+                    renderKanban();
                 }
             }
         }
