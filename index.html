@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>아바타 프로젝트 추적</title>
+    <title>햄쥐 작업 목록</title>
     <style>
         * {
             margin: 0;
@@ -355,6 +355,12 @@
             background: #F5F1E6;
             border-color: #F4C9D6;
         }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #F9A8BB;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -429,42 +435,88 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"></script>
+
     <script>
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyBAXaYlFoOIDK37bhVinoHzFmoSZpLqhi8",
+            authDomain: "hamg-todo.firebaseapp.com",
+            projectId: "hamg-todo",
+            storageBucket: "hamg-todo.firebasestorage.app",
+            messagingSenderId: "550309882187",
+            appId: "1:550309882187:web:fdebcce115bd7c4b3f460ce",
+            databaseURL: "https://hamg-todo-default-rtdb.firebaseio.com"
+        };
+
+        // Firebase 초기화
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
         let projects = [];
         let currentDate = new Date();
         let editingId = null;
         let completedOpen = false;
+        let userId = null;
 
         // 초기화
         function init() {
-            loadProjects();
-            renderCalendar();
-            renderKanban();
+            auth.signInAnonymously().then(() => {
+                userId = auth.currentUser.uid;
+                loadProjects();
+                renderCalendar();
+                renderKanban();
+            }).catch(error => {
+                console.error("로그인 오류:", error);
+            });
         }
 
-        // localStorage에서 로드
+        // Firebase에서 데이터 로드
         function loadProjects() {
-            const saved = localStorage.getItem('avatarProjects');
-            if (saved) {
-                projects = JSON.parse(saved);
-            } else {
-                projects = [
-                    { id: 1, name: '진사애', status: '결제완료', notes: '와루도 확인하고 패키지만 넘기면됨', deadline: '' },
-                    { id: 2, name: '설이', status: '결제완료', notes: '페이셜 컨펌-표정키, mmd 대응', deadline: '' },
-                    { id: 3, name: '호빵팔아요', status: '결제완료', notes: '주문만 주시고 문의 내용은 나중에 결정 후 보내주시기로 함', deadline: '' },
-                    { id: 4, name: '이도해', status: '결제완료', notes: '페이셜 하는중', deadline: '' },
-                    { id: 5, name: '이윤지', status: '결제완료', notes: '오마카세 패키지 시작도 안함', deadline: '' },
-                    { id: 6, name: '시루', status: '문의만', notes: '원화기반 성형할지 오리지널 할지 고민중 연락없음', deadline: '' },
-                    { id: 7, name: '하루라랄', status: '문의만', notes: '하리님 원화/9월 중반에 맡기기로', deadline: '2026-09-15' },
-                    { id: 8, name: '백월', status: '문의만', notes: '6월 30일에 맡기기로', deadline: '2026-06-30' },
-                ];
-                saveProjects();
-            }
+            const userRef = database.ref('users/' + userId + '/projects');
+            userRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    projects = Object.values(data);
+                } else {
+                    projects = [];
+                    // 첫 시작일 때 샘플 데이터 추가
+                    addSampleData();
+                }
+                renderCalendar();
+                renderKanban();
+            });
         }
 
-        // localStorage에 저장
-        function saveProjects() {
-            localStorage.setItem('avatarProjects', JSON.stringify(projects));
+        // 샘플 데이터 추가
+        function addSampleData() {
+            const sampleProjects = [
+                { id: 1, name: '진사애', status: '결제완료', notes: '와루도 확인하고 패키지만 넘기면됨', deadline: '' },
+                { id: 2, name: '설이', status: '결제완료', notes: '페이셜 컨펌-표정키, mmd 대응', deadline: '' },
+                { id: 3, name: '호빵팔아요', status: '결제완료', notes: '주문만 주시고 문의 내용은 나중에 결정 후 보내주시기로 함', deadline: '' },
+                { id: 4, name: '이도해', status: '결제완료', notes: '페이셜 하는중', deadline: '' },
+                { id: 5, name: '이윤지', status: '결제완료', notes: '오마카세 패키지 시작도 안함', deadline: '' },
+                { id: 6, name: '시루', status: '문의만', notes: '원화기반 성형할지 오리지널 할지 고민중 연락없음', deadline: '' },
+                { id: 7, name: '하루라랄', status: '문의만', notes: '하리님 원화/9월 중반에 맡기기로', deadline: '2026-09-15' },
+                { id: 8, name: '백월', status: '문의만', notes: '6월 30일에 맡기기로', deadline: '2026-06-30' },
+            ];
+            
+            sampleProjects.forEach(project => {
+                const userRef = database.ref('users/' + userId + '/projects/' + project.id);
+                userRef.set(project);
+            });
+        }
+
+        // Firebase에 데이터 저장
+        function saveToFirebase() {
+            projects.forEach(project => {
+                const userRef = database.ref('users/' + userId + '/projects/' + project.id);
+                userRef.set(project);
+            });
         }
 
         // 달력 렌더링
@@ -480,7 +532,6 @@
             const grid = document.getElementById('calendarGrid');
             grid.innerHTML = '';
 
-            // 요일 헤더
             ['일', '월', '화', '수', '목', '금', '토'].forEach(day => {
                 const div = document.createElement('div');
                 div.className = 'calendar-day-header';
@@ -488,12 +539,10 @@
                 grid.appendChild(div);
             });
 
-            // 빈 칸
             for (let i = 0; i < firstDay; i++) {
                 grid.appendChild(document.createElement('div'));
             }
 
-            // 날짜
             for (let day = 1; day <= daysInMonth; day++) {
                 const div = document.createElement('div');
                 div.className = 'calendar-day';
@@ -514,7 +563,6 @@
             }
         }
 
-        // 날짜 클릭시 정보 표시
         function showDateInfo(year, month, day) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const peopleWithDeadline = projects.filter(p => p.deadline === dateStr);
@@ -533,7 +581,6 @@
             }
         }
 
-        // 칸반보드 렌더링
         function renderKanban() {
             const statuses = ['문의만', '결제완료', '진행중'];
             const section = document.getElementById('kanbanSection');
@@ -555,22 +602,7 @@
                 column.appendChild(header);
 
                 filtered.forEach(project => {
-                    const card = document.createElement('div');
-                    card.className = 'project-card';
-                    card.draggable = true;
-                    card.setAttribute('data-id', project.id);
-                    card.ondragstart = (e) => dragStart(e, project.id);
-                    card.ondragend = (e) => dragEnd(e);
-                    card.onclick = () => openModal(project);
-
-                    let html = `<div class="project-name">${project.name}</div>`;
-                    if (project.notes) {
-                        html += `<div class="project-notes">${project.notes}</div>`;
-                    }
-                    if (project.deadline) {
-                        html += `<div class="project-deadline">📅 ${project.deadline}</div>`;
-                    }
-                    card.innerHTML = html;
+                    const card = createProjectCard(project);
                     column.appendChild(card);
                 });
 
@@ -580,7 +612,26 @@
             renderCompleted();
         }
 
-        // 작업완료 칸 렌더링
+        function createProjectCard(project) {
+            const card = document.createElement('div');
+            card.className = 'project-card';
+            card.draggable = true;
+            card.setAttribute('data-id', project.id);
+            card.ondragstart = (e) => dragStart(e, project.id);
+            card.ondragend = (e) => dragEnd(e);
+            card.onclick = () => openModal(project);
+
+            let html = `<div class="project-name">${project.name}</div>`;
+            if (project.notes) {
+                html += `<div class="project-notes">${project.notes}</div>`;
+            }
+            if (project.deadline) {
+                html += `<div class="project-deadline">📅 ${project.deadline}</div>`;
+            }
+            card.innerHTML = html;
+            return card;
+        }
+
         function renderCompleted() {
             const completed = projects.filter(p => p.status === '작업완료');
             document.getElementById('completedCount').textContent = `작업완료 (${completed.length})`;
@@ -588,40 +639,22 @@
             const list = document.getElementById('completedList');
             list.innerHTML = '';
             
-            // 드래그 이벤트 핸들러 설정
             list.ondragover = (e) => dragOver(e);
             list.ondrop = (e) => dropToCompleted(e);
             list.ondragleave = (e) => dragLeaveCompleted(e);
 
             completed.forEach(project => {
-                const card = document.createElement('div');
-                card.className = 'project-card';
-                card.draggable = true;
-                card.setAttribute('data-id', project.id);
-                card.ondragstart = (e) => dragStart(e, project.id);
-                card.ondragend = (e) => dragEnd(e);
-                card.onclick = () => openModal(project);
-
-                let html = `<div class="project-name">${project.name}</div>`;
-                if (project.notes) {
-                    html += `<div class="project-notes">${project.notes}</div>`;
-                }
-                if (project.deadline) {
-                    html += `<div class="project-deadline">📅 ${project.deadline}</div>`;
-                }
-                card.innerHTML = html;
+                const card = createProjectCard(project);
                 list.appendChild(card);
             });
         }
 
-        // 작업완료 토글
         function toggleCompleted() {
             completedOpen = !completedOpen;
             document.getElementById('completedList').classList.toggle('show');
             document.getElementById('toggleIcon').classList.toggle('open');
         }
 
-        // 드래그 시작
         let draggedId = null;
         function dragStart(e, id) {
             draggedId = id;
@@ -629,7 +662,6 @@
             card.classList.add('dragging');
         }
 
-        // 드래그 종료
         function dragEnd(e) {
             const card = e.target.closest('.project-card');
             card.classList.remove('dragging');
@@ -638,7 +670,6 @@
             });
         }
 
-        // 드래그 오버
         function dragOver(e) {
             e.preventDefault();
             const column = e.target.closest('.kanban-column');
@@ -647,7 +678,6 @@
             }
         }
 
-        // 드래그 떠남
         function dragLeave(e) {
             const column = e.target.closest('.kanban-column');
             if (column) {
@@ -655,7 +685,6 @@
             }
         }
 
-        // 드롭
         function drop(e, status) {
             e.preventDefault();
             const column = e.target.closest('.kanban-column');
@@ -667,14 +696,11 @@
                 const project = projects.find(p => p.id === draggedId);
                 if (project) {
                     project.status = status;
-                    saveProjects();
-                    renderCalendar();
-                    renderKanban();
+                    saveToFirebase();
                 }
             }
         }
 
-        // 작업완료 드롭
         function dropToCompleted(e) {
             e.preventDefault();
             const list = document.getElementById('completedList');
@@ -684,14 +710,11 @@
                 const project = projects.find(p => p.id === draggedId);
                 if (project) {
                     project.status = '작업완료';
-                    saveProjects();
-                    renderCalendar();
-                    renderKanban();
+                    saveToFirebase();
                 }
             }
         }
 
-        // 작업완료 드래그 떠남
         function dragLeaveCompleted(e) {
             const list = document.getElementById('completedList');
             if (e.target === list || !list.contains(e.relatedTarget)) {
@@ -699,7 +722,6 @@
             }
         }
 
-        // 모달 열기
         function openModal(project = null) {
             const modal = document.getElementById('modalOverlay');
             const deleteBtn = document.getElementById('deleteBtn');
@@ -725,13 +747,11 @@
             modal.classList.add('show');
         }
 
-        // 모달 닫기
         function closeModal(event) {
             if (event && event.target.id !== 'modalOverlay') return;
             document.getElementById('modalOverlay').classList.remove('show');
         }
 
-        // 프로젝트 저장
         function saveProject() {
             const name = document.getElementById('inputName').value.trim();
             if (!name) {
@@ -753,24 +773,18 @@
                 projects.push({ id: Date.now(), ...projectData });
             }
 
-            saveProjects();
-            renderCalendar();
-            renderKanban();
+            saveToFirebase();
             closeModal();
         }
 
-        // 프로젝트 삭제
         function deleteProject() {
             if (confirm('정말 삭제하시겠습니까?')) {
                 projects = projects.filter(p => p.id !== editingId);
-                saveProjects();
-                renderCalendar();
-                renderKanban();
+                saveToFirebase();
                 closeModal();
             }
         }
 
-        // 월 이동
         function prevMonth() {
             currentDate.setMonth(currentDate.getMonth() - 1);
             renderCalendar();
@@ -781,7 +795,7 @@
             renderCalendar();
         }
 
-        // 초기화 실행
+        // 앱 시작
         init();
     </script>
 </body>
