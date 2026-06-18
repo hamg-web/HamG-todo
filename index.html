@@ -532,23 +532,41 @@
             try {
                 updateSyncStatus('⏳ 저장 중...', '#F4C9D6');
 
-                // 파일의 SHA 가져오기 (업데이트하려면 필요)
+                // 파일의 SHA 가져오기
                 let sha = null;
                 try {
-                    const response = await fetch(
+                    const checkResponse = await fetch(
                         `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${FILE_NAME}`,
-                        { headers: { 'Authorization': `token ${token}` } }
+                        { 
+                            headers: { 
+                                'Authorization': `token ${token}`,
+                                'Accept': 'application/vnd.github.v3+json'
+                            } 
+                        }
                     );
-                    if (response.ok) {
-                        const data = await response.json();
-                        sha = data.sha;
+                    
+                    if (checkResponse.ok) {
+                        const fileData = await checkResponse.json();
+                        sha = fileData.sha;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.log('파일 확인 실패 (새 파일로 생성됨):', e);
+                }
 
                 // 파일 업로드/업데이트
                 const projectsJson = JSON.stringify(projects, null, 2);
                 const base64 = btoa(unescape(encodeURIComponent(projectsJson)));
                 
+                const requestBody = {
+                    message: `Update projects - ${new Date().toLocaleString('ko-KR')}`,
+                    content: base64
+                };
+
+                // SHA가 있으면 추가 (기존 파일 업데이트)
+                if (sha) {
+                    requestBody.sha = sha;
+                }
+
                 const response = await fetch(
                     `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${FILE_NAME}`,
                     {
@@ -557,11 +575,7 @@
                             'Authorization': `token ${token}`,
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                            message: `Update projects - ${new Date().toLocaleString('ko-KR')}`,
-                            content: base64,
-                            ...(sha && { sha })
-                        })
+                        body: JSON.stringify(requestBody)
                     }
                 );
 
@@ -569,7 +583,7 @@
                     updateSyncStatus('✅ GitHub에 저장됨!', '#10b981');
                 } else {
                     const error = await response.json();
-                    throw new Error(error.message);
+                    throw new Error(error.message || '저장 실패');
                 }
             } catch (error) {
                 console.error('저장 오류:', error);
